@@ -18,6 +18,16 @@ if not api_key:
 
 client = genai.Client(api_key=api_key) 
 
+# ==========================================
+# 2. VALIDATION DATABASE
+# ==========================================
+WESTERN_LINE = ["CHURCHGATE", "MARINE LINES", "CHARNI ROAD", "GRANT ROAD", "MUMBAI CENTRAL", "MAHALAXMI", "LOWER PAREL", "PRABHADEVI", "DADAR", "MATUNGA ROAD", "MAHIM", "BANDRA", "KHAR ROAD", "SANTACRUZ", "VILE PARLE", "ANDHERI", "JOGESHWARI", "RAM MANDIR", "GOREGAON", "MALAD", "KANDIVALI", "BORIVALI", "DAHISAR", "MIRA ROAD", "BHAYANDAR", "NAIGAON", "VASAI ROAD", "NALASOPARA", "VIRAR"]
+CENTRAL_LINE = ["CSMT", "MASJID", "SANDHURST ROAD", "BYCULLA", "CHINCHPOKLI", "CURREY ROAD", "PAREL", "DADAR", "MATUNGA", "SION", "KURLA", "GHATKOPAR", "THANE", "DOMBIVLI", "KALYAN", "ULHASNAGAR", "AMBERNATH"]
+HARBOUR_LINE = ["MAHIM", "BANDRA", "KHAR ROAD", "SANTACRUZ", "VILE PARLE", "ANDHERI", "JOGESHWARI", "RAM MANDIR", "GOREGAON","KINGS CIRCLE", "VADALA ROAD", "SEWRI", "CHEMBUR", "VASHI", "NERUL", "BELAPUR", "PANVEL"]
+# Combine them into one string for the AI
+ALL_STATIONS = ", ".join(set(CENTRAL_LINE + HARBOUR_LINE))
+
+
 def extract_ticket_data(image_frame):
     print("\n" + "="*40)
     print("🧠 SENDING TICKET TO GEMINI 2.5 FLASH...")
@@ -32,18 +42,25 @@ def extract_ticket_data(image_frame):
     rgb_frame = cv2.cvtColor(enhanced_frame, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(rgb_frame)
 
-    prompt = """
+    # 3. Dynamic Prompt Injection (Notice the 'f' string format)
+    prompt = f"""
     You are an expert at reading Mumbai Local train tickets. You must be able to read BOTH physically printed dot-matrix tickets and digital 'Railone' app tickets.
     
     First, analyze the image to determine the Ticket Category: "Journey Ticket", "Return Ticket", or "Season Pass".
     Use context to fix blurry or faded text on physical tickets.
 
+    CRITICAL SPELLING RULE: 
+    The Mumbai rail network only contains specific stations. The station names you extract MUST perfectly match a station from this allowed list: 
+    [{ALL_STATIONS}]
+    
+    If the ticket text is blurry and looks like a typo (e.g., "BADAR", "BAJAR", or "DADR"), you MUST map it to the closest valid station from the list above (e.g., "DADAR"). Do not output invalid station names.
+
     Extract the following data strictly in JSON format:
     
     COMMON FIELDS (Must always be extracted):
     - "Ticket ID / UTS No.": Look explicitly for the text "UTS:" or "UTS No:". The ID is the alphanumeric string immediately following it. CRITICAL: Do NOT read the number next to the letter 'M' in the top corners.
-    - "Source Station": Extract ONLY the alphabetical station name. You MUST strip out any distance numbers, brackets, or kilometer markers (e.g., if you see "DADAR(27)" or "DADAR -27 km-", output strictly "DADAR").
-    - "Destination Station": Extract ONLY the alphabetical station name. You MUST strip out any ampersands ("&") and distance markers (e.g., if you see "& KALYAN", output strictly "KALYAN").
+    - "Source Station": Extract ONLY the alphabetical station name. You MUST strip out any distance numbers, brackets, or kilometer markers (e.g., if you see "DADAR(27)" or "DADAR -27 km-", output strictly "DADAR"). MUST be from the allowed list.
+    - "Destination Station": Extract ONLY the alphabetical station name. You MUST strip out any ampersands ("&") and distance markers (e.g., if you see "& KALYAN", output strictly "KALYAN"). MUST be from the allowed list.
     - "Ticket Class": Must be exactly "First Class", "Second Class", or "AC EMU".
     - "Ticket Category": Must be "Journey Ticket", "Return Ticket", or "Season Pass".
 
